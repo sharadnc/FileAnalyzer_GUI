@@ -15,6 +15,7 @@ This module implements the “Data Grid” experience described in the plan:
 - “Sort the Column Names” toggles between meta order and alphabetical order.
 - Pagination uses 100 rows/page by default; the bar between **Prev** and **Next**
   shows **Filters - …** (applied panel filters, chart link, and live column header filters).
+- The Pivot Data tab shows the same **Filters - …** line above the pivot shelf summary.
 - Table rendering includes:
   - alternate-row highlighting
   - vertical gridlines
@@ -599,6 +600,9 @@ class DataGridTab(QWidget):
         self._last_pivot_row_dims: list[str] = []
         self._last_pivot_row_kinds: list[str] = []
         self._pivot_selection_summary_label: Optional[QLabel] = None
+        self._pivot_filters_summary_label: Optional[QLabel] = None
+        self._pivot_fields_splitter: Optional[QSplitter] = None
+        self._pivot_results_splitter: Optional[QSplitter] = None
 
         # Store UI filter rows.
         self._dimension_filter_rows: list[dict[str, object]] = []
@@ -840,22 +844,15 @@ class DataGridTab(QWidget):
             self._prev_btn.setVisible(False)
             self._next_btn.setVisible(False)
 
-            lower_panel = QWidget()
-            lower_layout = QVBoxLayout(lower_panel)
-            lower_layout.setContentsMargins(0, 0, 0, 0)
-            lower_layout.setSpacing(6)
-            lower_layout.addWidget(self._build_pivot_field_bar(), 0)
-            pivot_grid_toolbar = QHBoxLayout()
-            self._pivot_expand_all_btn = QPushButton("Expand All")
-            self._pivot_expand_all_btn.setToolTip("Show every row in the pivot hierarchy.")
-            self._pivot_expand_all_btn.clicked.connect(self._on_pivot_expand_all_clicked)  # type: ignore[attr-defined]
-            self._pivot_collapse_all_btn = QPushButton("Collapse All")
-            self._pivot_collapse_all_btn.setToolTip("Hide all nested rows under subtotals.")
-            self._pivot_collapse_all_btn.clicked.connect(self._on_pivot_collapse_all_clicked)  # type: ignore[attr-defined]
-            pivot_grid_toolbar.addStretch(1)
-            pivot_grid_toolbar.addWidget(self._pivot_expand_all_btn, 0)
-            pivot_grid_toolbar.addWidget(self._pivot_collapse_all_btn, 0)
-            lower_layout.addLayout(pivot_grid_toolbar, 0)
+            pivot_chrome = self._build_pivot_field_bar()
+            self._pivot_filters_summary_label = QLabel("")
+            self._pivot_filters_summary_label.setWordWrap(True)
+            try:
+                self._pivot_filters_summary_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            self._pivot_filters_summary_label.setMinimumHeight(22)
+            pivot_chrome.layout().addWidget(self._pivot_filters_summary_label, 0)  # type: ignore[union-attr]
             self._pivot_selection_summary_label = QLabel("")
             self._pivot_selection_summary_label.setWordWrap(True)
             try:
@@ -863,8 +860,20 @@ class DataGridTab(QWidget):
             except Exception:
                 pass
             self._pivot_selection_summary_label.setMinimumHeight(22)
-            lower_layout.addWidget(self._pivot_selection_summary_label, 0)
-            lower_layout.addWidget(self._grid_table, 1)
+            pivot_chrome.layout().addWidget(self._pivot_selection_summary_label, 0)  # type: ignore[union-attr]
+
+            self._pivot_results_splitter = QSplitter(Qt.Vertical)  # type: ignore[attr-defined]
+            self._pivot_results_splitter.setChildrenCollapsible(False)
+            self._pivot_results_splitter.addWidget(pivot_chrome)
+            self._pivot_results_splitter.addWidget(self._grid_table)
+            self._pivot_results_splitter.setStretchFactor(0, 0)
+            self._pivot_results_splitter.setStretchFactor(1, 1)
+            try:
+                self._pivot_results_splitter.setSizes([320, 480])
+            except Exception:
+                pass
+
+            lower_panel = self._pivot_results_splitter
             try:
                 self._pivot_rows_list.itemSelectionChanged.connect(self._update_pivot_selection_summary_label)  # type: ignore[attr-defined]
                 self._pivot_cols_list.itemSelectionChanged.connect(self._update_pivot_selection_summary_label)  # type: ignore[attr-defined]
@@ -873,6 +882,7 @@ class DataGridTab(QWidget):
             except Exception:
                 pass
             self._update_pivot_selection_summary_label()
+            self._update_pager_context_label()
             if not self._pivot_tree_click_wired:
                 self._grid_table.cellClicked.connect(self._on_pivot_tree_cell_clicked)  # type: ignore[attr-defined]
                 self._pivot_tree_click_wired = True
@@ -936,6 +946,22 @@ class DataGridTab(QWidget):
             restore_splitter_state(_ls, self._main_splitter, self._main_splitter.objectName())
             wire_splitter_autosave(self._filter_splitter, self._filter_splitter.objectName(), self)
             wire_splitter_autosave(self._main_splitter, self._main_splitter.objectName(), self)
+            if self._ui_surface == "pivot" and self._pivot_fields_splitter is not None:
+                self._pivot_fields_splitter.setObjectName("fa_layout_pivot_fields_horizontal")
+                restore_splitter_state(_ls, self._pivot_fields_splitter, self._pivot_fields_splitter.objectName())
+                wire_splitter_autosave(
+                    self._pivot_fields_splitter,
+                    self._pivot_fields_splitter.objectName(),
+                    self,
+                )
+            if self._ui_surface == "pivot" and self._pivot_results_splitter is not None:
+                self._pivot_results_splitter.setObjectName("fa_layout_pivot_results_vertical")
+                restore_splitter_state(_ls, self._pivot_results_splitter, self._pivot_results_splitter.objectName())
+                wire_splitter_autosave(
+                    self._pivot_results_splitter,
+                    self._pivot_results_splitter.objectName(),
+                    self,
+                )
         except Exception:
             pass
 
@@ -983,27 +1009,62 @@ class DataGridTab(QWidget):
 
         self._rebuild_drawer_list()
 
-    def _build_pivot_field_bar(self) -> QWidget:
-        """Lay out three multi-select columns: Rows, Columns (optional), Values.
+    def _build_pivot_field_column(self, title_text: str) -> Tuple[QWidget, QListWidget]:
+        """Build one titled list column for the resizable pivot field splitter.
 
         Purpose
         -------
-        Mirror Excel’s pivot field list: dimensions for row labels, optional
-        dimensions that create pivot columns, and one or more measures aggregated
-        with the shared operator chosen in **Aggregate**.
+        Wrap a ``QListWidget`` with a caption for Rows, Columns, or Values.
+
+        Internal Logic
+        ----------------
+        Use expanding size policy so the horizontal splitter can resize column width
+        and height together with the vertical results splitter.
+
+        Example invocation
+        --------------------
+        ``self._build_pivot_field_column(\"Rows (dimensions)\")``
+        """
+
+        wrap = QWidget()
+        v = QVBoxLayout(wrap)
+        v.setContentsMargins(4, 0, 4, 0)
+        v.setSpacing(4)
+        v.addWidget(QLabel(title_text))
+        lw = QListWidget()
+        lw.setSelectionMode(QAbstractItemView.ExtendedSelection)  # type: ignore[attr-defined]
+        lw.setMinimumHeight(80)
+        try:
+            lw.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        v.addWidget(lw, 1)
+        wrap.setMinimumWidth(120)
+        return wrap, lw
+
+    def _build_pivot_field_bar(self) -> QWidget:
+        """Lay out resizable Rows/Columns/Values lists and the control toolbar row.
+
+        Purpose
+        -------
+        Mirror Excel’s pivot field list: dimensions for row labels, optional column
+        dimensions, and measures—each in a horizontally resizable pane. Filter
+        summary labels are attached by :meth:`_build_ui` below the control row.
 
         Internal Logic
         ---------------
-        Build a horizontal three-column ``QListWidget`` strip (extended selection),
-        populate dimensions in the first two lists and measures in the third, and
-        wire **Update Pivot** to :meth:`_refresh_pivot_async`.
+        1. Title label row.
+        2. Horizontal ``QSplitter`` with three field columns (stored on
+           :attr:`_pivot_fields_splitter`).
+        3. Control row: aggregate combo, **Update Pivot**, **Expand All**, **Collapse All**.
 
         Example invocation
         --------------------
         Called once from :meth:`_build_ui` when ``self._ui_surface == "pivot"``.
 
         Returns:
-            The field-bar widget inserted above the pivot results table.
+            Chrome widget (lists + controls); the results table is a sibling in
+            :attr:`_pivot_results_splitter`.
         """
 
         bar = QWidget()
@@ -1016,30 +1077,22 @@ class DataGridTab(QWidget):
             title.setWordWrap(True)
         except Exception:
             pass
-        outer.addWidget(title)
+        outer.addWidget(title, 0)
 
-        three = QHBoxLayout()
-        three.setSpacing(12)
+        self._pivot_fields_splitter = QSplitter(Qt.Horizontal)  # type: ignore[attr-defined]
+        self._pivot_fields_splitter.setChildrenCollapsible(False)
 
-        def add_column(title_text: str) -> QListWidget:
-            """Build one titled list column and add it to the horizontal strip."""
-
-            wrap = QWidget()
-            v = QVBoxLayout(wrap)
-            v.setContentsMargins(0, 0, 0, 0)
-            v.setSpacing(4)
-            v.addWidget(QLabel(title_text))
-            lw = QListWidget()
-            lw.setSelectionMode(QAbstractItemView.ExtendedSelection)  # type: ignore[attr-defined]
-            lw.setMinimumHeight(140)
-            lw.setMaximumHeight(220)
-            v.addWidget(lw, 1)
-            three.addWidget(wrap, 1)
-            return lw
-
-        self._pivot_rows_list = add_column("Rows (dimensions)")
-        self._pivot_cols_list = add_column("Columns (optional - dimensions)")
-        self._pivot_vals_list = add_column("Values (measures)")
+        rows_wrap, self._pivot_rows_list = self._build_pivot_field_column("Rows (dimensions)")
+        cols_wrap, self._pivot_cols_list = self._build_pivot_field_column("Columns (optional - dimensions)")
+        vals_wrap, self._pivot_vals_list = self._build_pivot_field_column("Values (measures)")
+        self._pivot_fields_splitter.addWidget(rows_wrap)
+        self._pivot_fields_splitter.addWidget(cols_wrap)
+        self._pivot_fields_splitter.addWidget(vals_wrap)
+        try:
+            self._pivot_fields_splitter.setSizes([220, 220, 220])
+        except Exception:
+            pass
+        outer.addWidget(self._pivot_fields_splitter, 1)
 
         for d in self._available_dimensions():
             self._pivot_rows_list.addItem(QListWidgetItem(d))
@@ -1052,23 +1105,40 @@ class DataGridTab(QWidget):
         if self._pivot_vals_list.count() > 0:
             self._pivot_vals_list.item(0).setSelected(True)
 
-        outer.addLayout(three)
-
-        agg_row = QHBoxLayout()
-        agg_row.addWidget(QLabel("Aggregate (applies to all values):"), 0)
+        controls_host = QWidget()
+        controls_row = QHBoxLayout(controls_host)
+        controls_row.setSpacing(8)
+        agg_label = QLabel("Aggregate (applies to all values):")
+        try:
+            agg_label.setToolTip("Aggregation applied to every measure in Values.")
+        except Exception:
+            pass
+        controls_row.addWidget(agg_label, 0)
         self._pivot_agg_combo = QComboBox()
         for a in ("SUM", "AVG", "MIN", "MAX", "COUNT"):
             self._pivot_agg_combo.addItem(a)
-        agg_row.addWidget(self._pivot_agg_combo, 1)
-        outer.addLayout(agg_row)
+        self._pivot_agg_combo.setMaximumWidth(88)
+        self._pivot_agg_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)  # type: ignore[attr-defined]
+        controls_row.addWidget(self._pivot_agg_combo, 0)
 
-        btn_row = QHBoxLayout()
         self._pivot_update_btn = QPushButton("Update Pivot")
         self._pivot_update_btn.setToolTip("Re-run DuckDB aggregation and rebuild the Excel-style layout.")
         self._pivot_update_btn.clicked.connect(self._refresh_pivot_async)  # type: ignore[attr-defined]
-        btn_row.addWidget(self._pivot_update_btn, 0)
-        btn_row.addStretch(1)
-        outer.addLayout(btn_row)
+        controls_row.addWidget(self._pivot_update_btn, 0)
+
+        controls_row.addStretch(1)
+
+        self._pivot_expand_all_btn = QPushButton("Expand All")
+        self._pivot_expand_all_btn.setToolTip("Show every row in the pivot hierarchy.")
+        self._pivot_expand_all_btn.clicked.connect(self._on_pivot_expand_all_clicked)  # type: ignore[attr-defined]
+        controls_row.addWidget(self._pivot_expand_all_btn, 0)
+
+        self._pivot_collapse_all_btn = QPushButton("Collapse All")
+        self._pivot_collapse_all_btn.setToolTip("Hide all nested rows under subtotals.")
+        self._pivot_collapse_all_btn.clicked.connect(self._on_pivot_collapse_all_clicked)  # type: ignore[attr-defined]
+        controls_row.addWidget(self._pivot_collapse_all_btn, 0)
+
+        outer.addWidget(controls_host, 0)
 
         return bar
 
@@ -1092,14 +1162,17 @@ class DataGridTab(QWidget):
         self._update_pivot_selection_summary_label()
         row_dims = self._pivot_selected_in_order(self._pivot_rows_list, self._available_dimensions())
         if not row_dims:
+            self._update_pager_context_label(loading=False)
             QMessageBox.information(self, "Pivot", "Select at least one dimension under Rows.")
             return
         col_dims = self._pivot_selected_in_order(self._pivot_cols_list, self._available_dimensions())
         if set(col_dims) & set(row_dims):
+            self._update_pager_context_label(loading=False)
             QMessageBox.warning(self, "Pivot", "Column dimensions cannot overlap row dimensions.")
             return
         measures = self._pivot_selected_in_order(self._pivot_vals_list, self._available_measures())
         if not measures:
+            self._update_pager_context_label(loading=False)
             QMessageBox.information(self, "Pivot", "Select at least one measure under Values.")
             return
 
@@ -1152,6 +1225,8 @@ class DataGridTab(QWidget):
             self._total_rows = int(result.get("total", n_rows))
             self._render_grid(columns=columns, rows=list(rows))
             self._update_pivot_selection_summary_label()
+            self._page_label.setText(f"{n_rows:,} pivot row(s)")
+            self._update_pager_context_label(loading=False)
 
         def on_failed(msg: str) -> None:
             thread.wait()
@@ -1866,6 +1941,7 @@ class DataGridTab(QWidget):
         self._user_filters_where_sql = self._build_user_filters_where_sql()
         self._applied_panel_filter_summary = self._build_panel_filter_human_summary()
         self._page_index = 0
+        self._update_pager_context_label()
         self._refresh_surface_async()
 
     def _clear_panel_filter_ui_selections(self) -> None:
@@ -1942,6 +2018,7 @@ class DataGridTab(QWidget):
                 edit.blockSignals(False)
 
         self._page_index = 0
+        self._update_pager_context_label()
         self._refresh_surface_async()
 
     def _build_user_filters_where_sql(self) -> str:
@@ -2545,15 +2622,23 @@ class DataGridTab(QWidget):
         w.setText(disp)
         w.setToolTip(tip)
 
-    def _update_pager_context_label(self, *, loading: bool = False) -> None:
-        """Show only the **Filters - …** line for predicates applied to the grid data."""
+    def _build_applied_filters_segments(self) -> list[str]:
+        """Collect human-readable filter clauses for the pager / pivot summary strip.
 
-        if loading:
-            full = "Filters - …"
-            disp, tip = self._truncate_pager_block(full)
-            self._pager_summary_label.setText(disp)
-            self._pager_summary_label.setToolTip(tip)
-            return
+        Purpose
+        -------
+        Shared by the Data Grid pager and the Pivot Data tab so both surfaces show
+        the same **Filters - …** wording.
+
+        Internal Logic
+        ----------------
+        Include chart-linked selection, applied panel filters (user mode), and live
+        column header filters (grid only).
+
+        Example invocation
+        --------------------
+        ``\"; \".join(self._build_applied_filters_segments())``
+        """
 
         segments: list[str] = []
         if self._active_mode == "chart" and self._chart_click_filter_where_sql.strip():
@@ -2569,11 +2654,30 @@ class DataGridTab(QWidget):
         live = self._describe_live_column_filters_line().strip()
         if live:
             segments.append(live)
-        filter_line = "Filters - " + ("; ".join(segments) if segments else "(none)")
+        return segments
 
-        disp, tip = self._truncate_pager_block(filter_line)
+    def _format_applied_filters_line(self, *, loading: bool = False) -> str:
+        """Return the full **Filters - …** line shown on Grid and Pivot tabs."""
+
+        if loading:
+            return "Filters - …"
+        segments = self._build_applied_filters_segments()
+        return "Filters - " + ("; ".join(segments) if segments else "(none)")
+
+    def _paint_applied_filters_labels(self, full: str) -> None:
+        """Set pager (and pivot) filter summary labels with truncation + tooltip."""
+
+        disp, tip = self._truncate_pager_block(full)
         self._pager_summary_label.setText(disp)
         self._pager_summary_label.setToolTip(tip)
+        if self._ui_surface == "pivot" and self._pivot_filters_summary_label is not None:
+            self._pivot_filters_summary_label.setText(disp)
+            self._pivot_filters_summary_label.setToolTip(tip)
+
+    def _update_pager_context_label(self, *, loading: bool = False) -> None:
+        """Show **Filters - …** for predicates applied to the active surface data."""
+
+        self._paint_applied_filters_labels(self._format_applied_filters_line(loading=loading))
 
     def _schedule_live_filter_refresh(self) -> None:
         """Debounce server-side grid refresh while the user types in column filters."""

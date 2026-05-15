@@ -36,7 +36,7 @@ The framework should be designed that many users could run the code simultaneous
 
 The Python UI Framework designed should be able to executed on a Windows machine as well as on a Unix Server...Make sure the code can handle multiple environments.
 
-All environment-driven parameters should be defined in ../venv/.env file
+All environment-driven parameters should be defined in the project root .env file (see .env.example)
 
 To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
 
@@ -67,6 +67,7 @@ When a user uses the "Data Grid" Dimension and Measure Filter and clicls "Apply 
 In the Dimensions and Measures just show the FieldName....But the quickstats should show the FieldName [FieldDesc] though.
 
 In the plot use Orange color pallette for the chart data visualizations...
+[DONE - superseded] Visualize charts now use Plotly qualitative + Tableau10 palette (colorblind-friendly, multi-series).
 
 Show the vertical gridlines in the data grid...
 
@@ -218,3 +219,125 @@ Ingest the user chosen excel .xlsx file using Browse meta Button or using Browse
 On Pivot Data Tab...if a user selects SUMLEV, DIVISION, NAME for Rows, No column selected for Columns, and POPESTIMATE2020 for Values...The Pivot table generated has all zeroes...check the calculations once again.
 
 execute run_generate_pipe_data.bat --records 10000000 --output sample\LoanPop.txt
+[DONE - script available; sample/LoanPop.txt is gitignored when generated locally (~650MB+)]
+
+
+================================================================================
+IMPLEMENTATION STATUS & LATEST UPDATES (2026-05)
+================================================================================
+
+Project: AI_FileAnalyze (File Analyzer)
+Entry: src/main.py | Config: .env | Tests: pytest (PYTHONPATH=src)
+
+--------------------------------------------------------------------------------
+COMPLETED — CORE APPLICATION
+--------------------------------------------------------------------------------
+- Four tabs: Summary, Visualize, Data Grid, Pivot Data (evolved from original two-tab plan).
+- Welcome screen: Data path, Browse meta, Browse Templates, delimiter, # decimals, Load Data.
+- DuckDB-backed load with per-session temp directories (multi-user safe).
+- Text *_Meta format and Excel .xlsx/.xls metadata (flexible column order).
+- Meta validation: Excel workbooks must include Field Name, Primary Key, FieldType,
+  Datatype, Field Length, Field Description — popup warning if any are missing.
+- DEFAULT_DATA_PATH and DEFAULT_META_PATH read from project .env on startup.
+- Summary tab: per-field profiling, scorecard, copy to clipboard (formatted HTML).
+- Visualize: multi-select dimension/measure lists, Plotly charts (Line, Pie, Bar,
+  Stacked Bar, Histogram, Scatter), chart table with quick filters, sort, pagination.
+- Chart click → filters chart table and pushes WHERE to Data Grid / Pivot sinks.
+- Data Grid: split dimension/measure filters, Apply/Clear Filters, column drawer,
+  live header filters, pagination, export CSV, copy TSV, chart-click filter support.
+- Pivot Data: Rows/Columns/Values multi-select, aggregation, hierarchical pivot table,
+  expand/collapse, Excel-style column headers (Region-Value1, …), export pivot CSV.
+
+--------------------------------------------------------------------------------
+COMPLETED — DATA GRID & PIVOT FILTERS DISPLAY
+--------------------------------------------------------------------------------
+- Pager strip shows: Filters - chart-linked selection (DIM in (values)); panel filters;
+  live column filters (grid only).
+- Pivot Data tab shows the same Filters - … line (top pager + above pivot shelf summary).
+- Chart-linked filter text enumerates dimension and values (e.g. NAME in (United States)).
+
+--------------------------------------------------------------------------------
+COMPLETED — PIVOT DATA TAB UI (LATEST)
+--------------------------------------------------------------------------------
+- Rows / Columns / Values in a dedicated row with horizontal QSplitter (resizable columns).
+- Control row on one line: Aggregate combo (narrow), Update Pivot, Expand All, Collapse All.
+- Vertical QSplitter between field area (lists + controls + filter labels) and pivot table
+  (resizable). Splitter positions persist via QSettings (fa_layout_pivot_*).
+- Shelf summary line: Selected Rows: …; Columns: …; Values: …; Aggregation: …
+
+--------------------------------------------------------------------------------
+COMPLETED — VISUALIZE TAB (LATEST)
+--------------------------------------------------------------------------------
+- Chart color palette: Plotly qualitative (Plotly, Safe, Bold) with Tableau10 fallback;
+  layout colorway applied to all chart types.
+- Pie charts: tight margins for larger pie; labels shown only when readable:
+  few slices → label+percent outside; medium → auto + uniformtext hide overlap;
+  many slices → legend + hover only (no cluttered labels).
+- Loading overlay with spinner and “Generating visualization…” during chart build.
+
+--------------------------------------------------------------------------------
+COMPLETED — STATUS BAR
+--------------------------------------------------------------------------------
+- Bottom status bar: Loading time - hh:mm:ss (left); Zoom slider (right, Word/Excel style).
+- Timer runs from Load Data start through tab/worker completion.
+- Zoom change prompts reload; session state (filters, pivot shelf, visualize selections)
+  restored after Load Data.
+
+--------------------------------------------------------------------------------
+COMPLETED — METADATA & FIELDTYPE
+--------------------------------------------------------------------------------
+- FieldType DISPLAY: grid columns only (not on dimension/measure panels).
+- FieldType YYYYMMDD: dimension panels + YYYYMMDD display formatting in grids/charts.
+- Datatype synonyms: Date/Datetime → M; String/Varchar/Varchar2 → D (Excel meta).
+
+--------------------------------------------------------------------------------
+COMPLETED — PIVOT ENGINE FIXES
+--------------------------------------------------------------------------------
+- Single column-dimension pivot: no all-zero totals (Total key alignment).
+- Multiple measures: row grand totals per measure; no bogus GRAND TOTAL columns.
+- Reload/zoom: grid/pivot/visualize filter and shelf state export/import.
+
+--------------------------------------------------------------------------------
+COMPLETED — GIT / PROJECT HYGIENE
+--------------------------------------------------------------------------------
+- .gitignore, .gitattributes, .editorconfig, .env.example, README.md.
+- Ignored: .env, .venv, caches, .cursor/, .specstory/, sample/LoanPop.txt, large outputs.
+- run_file_analyzer.bat loads VENV_PYTHON from .env via scripts/read_venv_from_dotenv.bat.
+- sample/README.txt and templates/README.txt document folder usage.
+
+--------------------------------------------------------------------------------
+KEY FILES (REFERENCE)
+--------------------------------------------------------------------------------
+src/file_analyzer/config.py          — .env loading, AppConfig
+src/file_analyzer/meta_parser.py     — text + Excel meta, FieldType rules
+src/file_analyzer/ui/welcome.py      — load worker, default paths, meta validation popup
+src/file_analyzer/ui/grid_tab.py     — Data Grid + Pivot (ui_surface flag)
+src/file_analyzer/ui/visualize_tab.py — charts, palette, pie layout, chart-click
+src/file_analyzer/ui/summary_tab.py  — automated profiling UI
+src/file_analyzer/ui/status_zoom.py  — zoom + loading time label
+src/file_analyzer/pivot_hierarchy.py — pivot SQL / hierarchy
+tools/generate_pipe_data.py          — synthetic data from Excel meta
+run_file_analyzer.bat / run_file_analyzer_debug.bat
+
+--------------------------------------------------------------------------------
+NOT DONE / OPEN (FROM ORIGINAL PLAN OR FUTURE)
+--------------------------------------------------------------------------------
+- Drag-and-drop field shelves on Visualize (replaced by multi-select lists).
+- Explicit “Project Docs” → Help tutorial HTML (Help button / tutorial — verify if shipped).
+- Auto-suggested chart types from field types (recommended charts card).
+- Full data-quality “Top findings” auto-narrative (partial scorecard exists on Summary).
+- Unix headless/server deployment packaging (app is PyQt5 desktop-first).
+- Explicit row/column auto-block thresholds with mandatory export-only mode (partial warnings).
+
+--------------------------------------------------------------------------------
+HOW TO RUN / TEST
+--------------------------------------------------------------------------------
+1. Copy .env.example to .env; set VENV_PYTHON, DEFAULT_DATA_PATH, DEFAULT_META_PATH.
+2. pip install -r requirements.txt
+3. run_file_analyzer.bat (or run_file_analyzer_debug.bat for console errors)
+4. pytest: set PYTHONPATH=src then python -m pytest
+5. Large sample: run_generate_pipe_data.bat --records N --output sample\LoanPop.txt
+
+--------------------------------------------------------------------------------
+END LATEST UPDATES
+--------------------------------------------------------------------------------

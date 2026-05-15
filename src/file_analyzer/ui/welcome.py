@@ -8,17 +8,18 @@ This module implements:
 - A central :class:`QTabWidget` with **Summary**, **Visualize**, **Data Grid**, and
   **Pivot Data** tabs that
   fill with real content after a successful **Load Data** (background load worker).
-- A status bar with a **Zoom** slider (bottom-right, Word/Excel style) scales UI text.
+- The **Status bar** (bottom) shows ``Loading time - hh:mm:ss`` at the left and a **Zoom** slider at the right.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from file_analyzer.config import load_app_config
+from file_analyzer.config import AppConfig, load_app_config
 from file_analyzer.duckdb_session import DuckDBSession, DuckDBSessionConfig
 from file_analyzer.meta_parser import parse_meta_file, validate_meta_file_before_load
 from file_analyzer.stats_service import apply_measure_decimal_rounding_to_quick_stats, compute_quick_stats_parallel
@@ -80,36 +81,32 @@ def _repo_root() -> Path:
 
 
 def default_sample_data_path() -> Path:
-    """Pick the default data file path (``.env`` override, then legacy fallbacks).
+    """Return the welcome-screen data path from ``DEFAULT_DATA_PATH`` in ``.env``.
 
     Purpose
     -------
-    Prefill the welcome screen data file field with the project sample dataset.
+    Prefill the **Data:** field on startup from the project ``.env`` file.
 
     Internal Logic
     ----------------
-    1. If ``DEFAULT_DATA_PATH`` is set in ``.env`` and the file exists, use it.
-    2. Else if the canonical ``G:\\...\\NST-EST2025-ALLDATA.csv`` exists, use it.
-    3. Else use ``<repo>/sample/NST-EST2025-ALLDATA.csv``.
+    1. If ``DEFAULT_DATA_PATH`` is set in ``.env``, return it (resolved relative to the
+       project root when not absolute). The path is shown even when the file does not
+       exist yet.
+    2. Else fall back to ``sample/LoanPop_small.txt`` under the repository root.
 
     Example invocation
     ------------------
     >>> p = default_sample_data_path()
-    >>> p.name
-    'NST-EST2025-ALLDATA.csv'
-    """
+  """
 
     cfg = load_app_config()
-    if cfg.default_data_path is not None and cfg.default_data_path.is_file():
+    if cfg.default_data_path is not None:
         return cfg.default_data_path
-    g_path = Path(r"G:\My Drive\AI_Projects\AI_FileAnalyze\sample\NST-EST2025-ALLDATA.csv")
-    if g_path.exists():
-        return g_path
-    return _repo_root() / "sample" / "NST-EST2025-ALLDATA.csv"
+    return _repo_root() / "sample" / "LoanPop_small.txt"
 
 
 def default_sample_meta_path(data_path: Path) -> Path:
-    """Pick the default meta path (``.env`` override, legacy ``G:`` sample, or derived).
+    """Return metadata path from ``DEFAULT_META_PATH`` in ``.env`` or derive from data.
 
     Purpose
     -------
@@ -117,29 +114,78 @@ def default_sample_meta_path(data_path: Path) -> Path:
 
     Internal Logic
     ----------------
-    1. If ``DEFAULT_META_PATH`` is set in ``.env`` and the path exists, use it.
-    2. Else when data is the canonical ``G:`` NST sample and ``G:`` ``*_Meta`` exists, use that.
-    3. Else return :func:`derive_meta_path` for ``data_path``.
+    1. If ``DEFAULT_META_PATH`` is set in ``.env`` (non-blank), return that path.
+    2. Else return :func:`derive_meta_path` for ``data_path`` (``<data_filename>_Meta``).
 
     Example invocation
     ------------------
     >>> data = default_sample_data_path()
     >>> m = default_sample_meta_path(data)
-    >>> m.name.endswith("_Meta")
-    True
     """
 
     cfg = load_app_config()
-    if cfg.default_meta_path is not None and cfg.default_meta_path.exists():
+    if cfg.default_meta_path is not None:
         return cfg.default_meta_path
-    g_data = Path(r"G:\My Drive\AI_Projects\AI_FileAnalyze\sample\NST-EST2025-ALLDATA.csv")
-    g_meta = Path(r"G:\My Drive\AI_Projects\AI_FileAnalyze\sample\NST-EST2025-ALLDATA.csv_Meta")
-    try:
-        if data_path.resolve() == g_data.resolve() and g_meta.exists():
-            return g_meta
-    except OSError:
-        pass
     return derive_meta_path(data_path)
+
+
+def apply_welcome_default_paths_from_env(
+    cfg: AppConfig,
+    file_path: object,
+    main_window: object,
+    browse_meta_btn: object,
+) -> None:
+    """Set the data field and optional explicit meta path from ``.env`` defaults.
+
+    Purpose
+    -------
+    Centralize welcome-toolbar initialization so **Data:** and **Browse meta** always
+    reflect ``DEFAULT_DATA_PATH`` and ``DEFAULT_META_PATH``.
+
+    Internal Logic
+    ----------------
+    1. Set ``file_path`` text from :func:`default_sample_data_path`.
+    2. When ``cfg.default_meta_path`` is set, store it on ``main_window._explicit_meta_path``.
+    3. Otherwise clear explicit meta and only set a tooltip when a derived ``*_Meta`` exists.
+
+    Example invocation
+    --------------------
+    ``apply_welcome_default_paths_from_env(cfg, file_path, main_window, browse_meta_btn)``
+    """
+
+    data_p = default_sample_data_path()
+    try:
+        file_path.setText(str(data_p))  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    meta_hint = (
+        "Browse to a *_Meta file. If unset, the meta path is derived from the data file name."
+    )
+    if cfg.default_meta_path is not None:
+        try:
+            main_window._explicit_meta_path = cfg.default_meta_path  # type: ignore[attr-defined]
+            browse_meta_btn.setToolTip(str(cfg.default_meta_path))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        return
+
+    try:
+        main_window._explicit_meta_path = None  # type: ignore[attr-defined]
+    except Exception:
+        pass
+    derived = derive_meta_path(data_p)
+    if derived.exists():
+        try:
+            main_window._explicit_meta_path = derived  # type: ignore[attr-defined]
+            browse_meta_btn.setToolTip(str(derived))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    else:
+        try:
+            browse_meta_btn.setToolTip(meta_hint)  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
 
 def templates_data_directory() -> Path:
@@ -421,7 +467,7 @@ def build_welcome_window() -> None:
     from file_analyzer.ui.grid_tab import DataGridTab
     from file_analyzer.ui.pivot_tab import PivotDataTab
     from file_analyzer.ui.summary_tab import SummaryTab
-    from file_analyzer.ui.status_zoom import install_status_bar_zoom
+    from file_analyzer.ui.status_zoom import install_status_bar_zoom, update_status_bar_load_time
     from file_analyzer.ui.visualize_tab import VisualizeTab
 
     ensure_application_identity()
@@ -522,21 +568,7 @@ def build_welcome_window() -> None:
     delimiter_combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
 
     _cfg = load_app_config()
-    _default_data = default_sample_data_path()
-    file_path.setText(str(_default_data))
-    _default_meta = default_sample_meta_path(_default_data)
-    if _cfg.default_meta_path is not None and _cfg.default_meta_path.exists():
-        main_window._explicit_meta_path = _cfg.default_meta_path  # type: ignore[attr-defined]
-        try:
-            browse_meta_btn.setToolTip(str(_cfg.default_meta_path))
-        except Exception:
-            pass
-    elif _default_meta.exists() and _default_meta != derive_meta_path(_default_data):
-        main_window._explicit_meta_path = _default_meta  # type: ignore[attr-defined]
-        try:
-            browse_meta_btn.setToolTip(str(_default_meta))
-        except Exception:
-            pass
+    apply_welcome_default_paths_from_env(_cfg, file_path, main_window, browse_meta_btn)
     delimiter_combo.setCurrentIndex(0)
 
     decimals_edit = QLineEdit("2")
@@ -881,6 +913,9 @@ def build_welcome_window() -> None:
         progress.setAutoClose(True)
         progress.setMinimumDuration(0)
 
+        main_window._load_started_at = time.perf_counter()  # type: ignore[attr-defined]
+        update_status_bar_load_time(main_window, loading=True)
+
         worker = _LoadDatasetWorker(
             data_path=data_path,
             delimiter=delimiter,
@@ -954,6 +989,13 @@ def build_welcome_window() -> None:
                 except Exception:
                     pass
 
+            started = getattr(main_window, "_load_started_at", None)  # type: ignore[attr-defined]
+            if started is not None:
+                update_status_bar_load_time(
+                    main_window,
+                    elapsed_seconds=time.perf_counter() - float(started),
+                )
+
             submit_btn.setEnabled(True)
             file_path.setEnabled(True)
             browse_btn.setEnabled(True)
@@ -968,6 +1010,12 @@ def build_welcome_window() -> None:
             thread.wait()
             main_window._load_thread = None  # type: ignore[attr-defined]
             main_window._load_worker_qobj = None  # type: ignore[attr-defined]
+            started = getattr(main_window, "_load_started_at", None)  # type: ignore[attr-defined]
+            if started is not None:
+                update_status_bar_load_time(
+                    main_window,
+                    elapsed_seconds=time.perf_counter() - float(started),
+                )
             QMessageBox.critical(main_window, "Load failed", msg)
             submit_btn.setEnabled(True)
             file_path.setEnabled(True)

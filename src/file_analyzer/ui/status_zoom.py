@@ -31,9 +31,93 @@ Called once at startup from ``build_welcome_window``::
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 _LOG = logging.getLogger(__name__)
+
+
+def format_load_duration_hms(elapsed_seconds: float) -> str:
+    """Format elapsed load time as ``hh:mm:ss``.
+
+    Purpose
+    -------
+    Display dataset load duration in the status bar left corner.
+
+    Internal Logic
+    ----------------
+    Round to the nearest whole second, then split into hours, minutes, and seconds.
+
+    Example invocation
+    --------------------
+    ``format_load_duration_hms(3723.4)`` → ``\"01:02:03\"``
+    """
+
+    total = int(max(0, round(float(elapsed_seconds))))
+    hours, rem = divmod(total, 3600)
+    minutes, seconds = divmod(rem, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def format_status_bar_loading_time(
+    *,
+    elapsed_seconds: Optional[float] = None,
+    loading: bool = False,
+) -> str:
+    """Build the left status bar text: ``Loading time - hh:mm:ss``.
+
+    Purpose
+    -------
+    Single formatter for idle, in-progress, and completed load states.
+
+    Internal Logic
+    ----------------
+    Append ``…`` while loading, ``--:--:--`` when idle, else
+    :func:`format_load_duration_hms` for a finished load.
+
+    Example invocation
+    --------------------
+    ``format_status_bar_loading_time(elapsed_seconds=12.5)``
+    → ``\"Loading time - 00:00:13\"``
+    """
+
+    if loading:
+        return "Loading time - …"
+    if elapsed_seconds is not None:
+        return f"Loading time - {format_load_duration_hms(elapsed_seconds)}"
+    return "Loading time - --:--:--"
+
+
+def update_status_bar_load_time(
+    main_window: Any,
+    *,
+    elapsed_seconds: Optional[float] = None,
+    loading: bool = False,
+) -> None:
+    """Update the leftmost status bar label with load duration or a loading placeholder.
+
+    Purpose
+    -------
+    Called from the welcome screen when **Load Data** starts, finishes, or fails.
+
+    Internal Logic
+    ----------------
+    Read ``main_window._status_load_time_label`` set by :func:`install_status_bar_zoom`.
+
+    Example invocation
+    --------------------
+    ``update_status_bar_load_time(win, loading=True)``
+    ``update_status_bar_load_time(win, elapsed_seconds=12.5)``
+    """
+
+    label = getattr(main_window, "_status_load_time_label", None)
+    if label is None:
+        return
+    label.setText(
+        format_status_bar_loading_time(
+            elapsed_seconds=elapsed_seconds,
+            loading=loading,
+        )
+    )
 
 
 def install_status_bar_zoom(
@@ -135,6 +219,18 @@ def install_status_bar_zoom(
         """
     )
     main_window.setStatusBar(status)
+
+    load_time_label = QLabel(format_status_bar_loading_time())
+    try:
+        load_time_label.setStyleSheet("color: #1F1F1F; font-weight: 500; padding-right: 12px;")
+        load_time_label.setToolTip("Time taken to load the dataset (Loading time - hh:mm:ss)")
+    except Exception:
+        pass
+    status.addWidget(load_time_label, 1)
+    try:
+        main_window._status_load_time_label = load_time_label  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
     zoom_host = QWidget()
     zoom_row = QHBoxLayout(zoom_host)

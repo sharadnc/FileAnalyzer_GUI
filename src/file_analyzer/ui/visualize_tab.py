@@ -204,40 +204,141 @@ def _build_chart_sort_order(
     return out
 
 
-def _default_orange_chart_palette() -> list[str]:
-    """Return discrete orange-centric hex colors for Plotly charts on the Visualize tab.
+# Tableau 10 — colorblind-friendly fallback when Plotly color modules are unavailable.
+_TABLEAU10_PALETTE: Tuple[str, ...] = (
+    "#4E79A7",
+    "#F28E2B",
+    "#E15759",
+    "#76B7B2",
+    "#59A14F",
+    "#EDC948",
+    "#B07AA1",
+    "#FF9DA7",
+    "#9C755F",
+    "#BAB0AC",
+)
+
+
+def _default_chart_palette() -> list[str]:
+    """Return a discrete, colorblind-friendly palette for Plotly charts.
 
     Purpose
     -------
-    Supply a default multi-color palette so single-series bars, histogram bins, and
-    scatter markers read as distinct categories while staying in a warm orange theme.
+    Give bar, line, pie, stacked bar, histogram, and scatter traces distinguishable
+    hues that work on the Visualize tab's light blue background.
 
     Internal Logic
     ---------------
-    Return a fixed list of twelve ``#RRGGBB`` strings ordered from deeper rust tones
-    through orange and amber to lighter peach. Callers wrap with ``i % len(...)``
-    so long category axes still cycle through distinguishable hues.
+    Prefer Plotly's built-in ``qualitative.Plotly`` and ``qualitative.Safe`` sequences
+    (deduplicated, order preserved). Fall back to :data:`_TABLEAU10_PALETTE` when
+    ``plotly`` is not importable. Callers cycle with ``i % len(palette)``.
 
     Example invocation
     --------------------
-    ``pal = _default_orange_chart_palette(); c0 = pal[0]`` → ``\"#C0392B\"``;
-    ``[pal[i % len(pal)] for i in range(5)]`` builds five bar ``marker`` colors.
+    ``pal = _default_chart_palette(); fig.update_layout(colorway=pal)``
     """
 
-    return [
-        "#C0392B",
-        "#D35400",
-        "#E67E22",
-        "#F39C12",
-        "#F5B041",
-        "#F8C471",
-        "#E59866",
-        "#DC7633",
-        "#CA6F1E",
-        "#BA4A00",
-        "#FF9F43",
-        "#FFB088",
-    ]
+    try:
+        import plotly.colors.qualitative as pq  # type: ignore[import-not-found]
+
+        merged: list[str] = []
+        seen: set[str] = set()
+        for seq in (pq.Plotly, pq.Safe, pq.Bold):
+            for hex_color in seq:
+                if hex_color not in seen:
+                    seen.add(hex_color)
+                    merged.append(hex_color)
+        if merged:
+            return merged
+    except Exception:
+        pass
+    return list(_TABLEAU10_PALETTE)
+
+
+def _pie_chart_display_options(
+    labels: Sequence[object],
+    values: Sequence[object],
+) -> Tuple[dict[str, object], dict[str, object]]:
+    """Choose pie label density and layout margins so the chart stays readable.
+
+    Purpose
+    -------
+    Show slice labels only when there is enough room; otherwise use hover and an
+    optional legend. Tight margins enlarge the pie within the Plotly view.
+
+    Internal Logic
+    ----------------
+    1. Coerce ``values`` to non-negative floats and compute slice count and
+       minimum positive percent of total.
+    2. Many slices (``>18``) or many thin slices → ``textinfo='none'`` + legend.
+    3. Medium complexity → percent only with ``textposition='auto'`` and
+       ``uniformtext.mode='hide'`` (Plotly drops text that would overlap).
+    4. Few slices → ``label+percent`` outside labels with slightly larger margins.
+
+    Example invocation
+    --------------------
+    ``trace_kw, layout_kw = _pie_chart_display_options([\"A\",\"B\"], [50, 50])``
+    """
+
+    floats: list[float] = []
+    for v in values:
+        try:
+            floats.append(max(0.0, float(v)))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            floats.append(0.0)
+    n = len(floats)
+    total = sum(floats) or 1.0
+    positive_pcts = [(f / total) * 100.0 for f in floats if f > 0.0]
+    min_pct = min(positive_pcts) if positive_pcts else 0.0
+
+    trace: dict[str, object] = {
+        "hole": 0,
+        "sort": False,
+        "direction": "clockwise",
+        "automargin": True,
+    }
+    layout: dict[str, object] = {
+        "margin": dict(l=2, r=2, t=28, b=2),
+        "uniformtext": dict(minsize=10, mode="hide"),
+        "showlegend": False,
+    }
+
+    if n == 0:
+        trace["textinfo"] = "none"
+        return trace, layout
+
+    if n > 18 or (n > 10 and min_pct < 2.0):
+        trace["textinfo"] = "none"
+        layout["showlegend"] = True
+        layout["legend"] = dict(
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.01,
+            font=dict(size=10),
+        )
+        layout["margin"] = dict(l=2, r=140, t=28, b=2)
+        return trace, layout
+
+    if n > 12 or min_pct < 4.0:
+        trace["textinfo"] = "percent"
+        trace["textposition"] = "auto"
+        trace["insidetextorientation"] = "horizontal"
+        trace["textfont"] = dict(size=11, color="#1F1F1F")
+        return trace, layout
+
+    if n > 6:
+        trace["textinfo"] = "label+percent"
+        trace["textposition"] = "auto"
+        trace["textfont"] = dict(size=11, color="#1F1F1F")
+        return trace, layout
+
+    trace["textinfo"] = "label+percent"
+    trace["textposition"] = "outside"
+    trace["textfont"] = dict(size=12, color="#1F1F1F")
+    layout["margin"] = dict(l=6, r=6, t=32, b=6)
+    return trace, layout
 
 
 def _chart_dimension_click_equals(cell: object, target: object) -> bool:
@@ -1632,8 +1733,9 @@ class VisualizeTab(QWidget):
 
         import plotly.graph_objects as go  # type: ignore
 
-        orange_palette = _default_orange_chart_palette()
-        n_palette = len(orange_palette)
+        self._last_pie_layout_opts: Optional[dict[str, object]] = None
+        chart_palette = _default_chart_palette()
+        n_palette = len(chart_palette)
 
         fig = None
         if chart_type in ("Bar", "Line"):
@@ -1645,11 +1747,11 @@ class VisualizeTab(QWidget):
                     mname = cols[j + 1]
                     y_vals = [r[j + 1] for r in rows]
                     customdata = [[str(xv)] for xv in x_values]
-                    trace_clr = orange_palette[j % n_palette]
+                    trace_clr = chart_palette[j % n_palette]
                     if chart_type == "Line":
                         if n_m == 1:
                             # One measure: vary marker color along X; keep a single line accent.
-                            pt_colors = [orange_palette[i % n_palette] for i in range(len(x_values))]
+                            pt_colors = [chart_palette[i % n_palette] for i in range(len(x_values))]
                             fig.add_trace(
                                 go.Scatter(
                                     x=x_values,
@@ -1675,7 +1777,7 @@ class VisualizeTab(QWidget):
                             )
                     else:
                         if n_m == 1:
-                            bar_colors = [orange_palette[i % n_palette] for i in range(len(x_values))]
+                            bar_colors = [chart_palette[i % n_palette] for i in range(len(x_values))]
                             fig.add_trace(
                                 go.Bar(
                                     x=x_values,
@@ -1706,10 +1808,19 @@ class VisualizeTab(QWidget):
             x_values = [r[0] for r in rows]
             y_values = [r[1] for r in rows]
             customdata = [[str(xv)] for xv in x_values]
-            colors = [orange_palette[i % n_palette] for i in range(len(x_values))]
+            colors = [chart_palette[i % n_palette] for i in range(len(x_values))]
+            pie_trace_opts, pie_layout_opts = _pie_chart_display_options(x_values, y_values)
             fig = go.Figure(
-                data=go.Pie(labels=x_values, values=y_values, customdata=customdata, marker=dict(colors=colors))
+                data=go.Pie(
+                    labels=x_values,
+                    values=y_values,
+                    customdata=customdata,
+                    marker=dict(colors=colors, line=dict(color="#FFFFFF", width=1)),
+                    hovertemplate="%{label}<br>%{value:,.2f}<br>%{percent}<extra></extra>",
+                    **pie_trace_opts,
+                )
             )
+            self._last_pie_layout_opts = pie_layout_opts
         elif chart_type == "Stacked Bar":
             x_col = cols[0]
             color_col = cols[1]
@@ -1729,7 +1840,7 @@ class VisualizeTab(QWidget):
                         x=trace_x,
                         y=trace_y,
                         customdata=trace_customdata,
-                        marker=dict(color=orange_palette[idx % n_palette]),
+                        marker=dict(color=chart_palette[idx % n_palette]),
                     )
                 )
             fig.update_layout(barmode="stack")
@@ -1740,7 +1851,7 @@ class VisualizeTab(QWidget):
             y_values = [r[1] for r in rows]
             # Include bin_idx so click filtering does not depend on float string equality.
             customdata = [[int(r[0]), float(r[2]), float(r[3])] for r in rows]
-            hist_colors = [orange_palette[i % n_palette] for i in range(len(rows))]
+            hist_colors = [chart_palette[i % n_palette] for i in range(len(rows))]
             fig = go.Figure(
                 data=go.Bar(x=x_values, y=y_values, customdata=customdata, marker=dict(color=hist_colors))
             )
@@ -1753,9 +1864,9 @@ class VisualizeTab(QWidget):
                     mname = cols[j + 1]
                     y_vals = [r[j + 1] for r in rows]
                     customdata = [[str(xv)] for xv in x_values]
-                    trace_clr = orange_palette[j % n_palette]
+                    trace_clr = chart_palette[j % n_palette]
                     if n_m == 1:
-                        pt_colors = [orange_palette[i % n_palette] for i in range(len(x_values))]
+                        pt_colors = [chart_palette[i % n_palette] for i in range(len(x_values))]
                         fig.add_trace(
                             go.Scatter(
                                 x=x_values,
@@ -1785,12 +1896,17 @@ class VisualizeTab(QWidget):
         else:
             fig = go.Figure()
 
-        fig.update_layout(
+        layout_kwargs: dict[str, object] = dict(
             template="plotly_white",
+            colorway=chart_palette,
             paper_bgcolor="#F7FBFF",
             plot_bgcolor="#F7FBFF",
-            font=dict(color="#000000"),
+            font=dict(color="#1F1F1F", family="Segoe UI, Arial, sans-serif"),
+            legend=dict(font=dict(size=11)),
         )
+        if self._last_pie_layout_opts is not None:
+            layout_kwargs.update(self._last_pie_layout_opts)
+        fig.update_layout(**layout_kwargs)
 
         self._plotly_bridge = _PlotlyBridge(self)
         channel = QWebChannel(self._plot_view.page())

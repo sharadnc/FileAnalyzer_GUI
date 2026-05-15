@@ -17,12 +17,12 @@ rem If the window still fails: double-click run_file_analyzer_debug.bat to see
 rem errors in a console, or read the MessageBox from main.py on failure.
 rem =============================================================================
 
-set "SHARED_VENV_PYTHON=G:\My Drive\AI_Projects\.venv\Scripts\python.exe"
-
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
 cd /d "%ROOT%"
+
+call "%ROOT%\scripts\read_venv_from_dotenv.bat" "%ROOT%"
 
 set "LAUNCH_VBS=%ROOT%\scripts\launch_gui_hidden.vbs"
 if not exist "%LAUNCH_VBS%" (

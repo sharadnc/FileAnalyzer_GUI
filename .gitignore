@@ -59,11 +59,14 @@ dmypy.json
 .cursor/
 .specstory/
 
-# --- OS ---
+# --- OS / cloud sync ---
 .DS_Store
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+*.tmp
+*.crdownload
+~$*
 
 # --- DuckDB / runtime session outputs (if written under the repo) ---
 *.duckdb
@@ -85,3 +88,9 @@ scratch/
 # Large generated datasets (use run_generate_pipe_data.bat locally)
 sample/LoanPop.txt
 sample/*_generated.txt
+
+# --- Local secrets / credentials (never commit) ---
+*credentials*
+*secret*
+*.pem
+*.key

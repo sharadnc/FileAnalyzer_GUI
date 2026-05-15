@@ -19,7 +19,8 @@ class PivotDataTab(DataGridTab):
     -------
     Let users narrow data with the familiar dimension/measure filter panels and
     ``Apply Filters``, then arrange row/column dimensions and an aggregated measure
-    in a layout similar to Excel pivot fields.
+    in a layout similar to Excel pivot fields. Applied filters appear as
+    **Filters - …** (same format as the Data Grid pager strip).
 
     Internal Logic
     ---------------
