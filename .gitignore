@@ -1,0 +1,87 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Virtual environments ---
+.venv/
+venv/
+ENV/
+env/
+
+# --- Testing / lint ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# --- Local configuration (commit .env.example instead) ---
+.env
+.env.local
+.env.*.local
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Cursor / SpecStory session artifacts ---
+.cursor/
+.specstory/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --- DuckDB / runtime session outputs (if written under the repo) ---
+*.duckdb
+*.duckdb.wal
+file_analyzer_*/
+fa_session_*/
+
+# --- Ad-hoc generated chart HTML (Visualize tab temp files) ---
+viz_chart_*.html
+
+# --- Logs ---
+*.log
+
+# --- Optional local data drops (keep small fixtures under sample/) ---
+data/
+local/
+scratch/
+
+# Large generated datasets (use run_generate_pipe_data.bat locally)
+sample/LoanPop.txt
+sample/*_generated.txt

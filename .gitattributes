@@ -1,0 +1,31 @@
+# Normalize line endings on checkout/commit (cross-platform team).
+* text=auto
+
+# Shell scripts must stay LF on Unix runners.
+*.sh text eol=lf
+
+# Windows launchers keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.xlsx binary
+*.xls binary
+*.duckdb binary
+
+# Diff-friendly text formats
+*.md text diff=markdown
+*.py text diff=python
+*.qss text
+*.json text
+*.toml text
+*.txt text
+*.csv text
+*.tsv text

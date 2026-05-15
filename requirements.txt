@@ -1,0 +1,15 @@
+numpy>=1.26
+pandas>=2.2
+openpyxl>=3.1
+xlrd>=2.0
+duckdb>=0.10
+python-dotenv>=1.0
+plotly>=5.24
+pillow>=10.4
+pytest>=8.2
+
+# PyQt5 GUI (required for src/main.py)
+PyQt5>=5.15.10
+# PyQtWebEngine: use a range so Python 3.14+ can resolve (manylinux/py3.14 may lag behind 5.15.10).
+PyQtWebEngine>=5.15.0
+

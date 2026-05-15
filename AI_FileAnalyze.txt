@@ -1,0 +1,220 @@
+.\.venv\scripts\activate.bat
+
+Generate Python GUI Framework code that reads a csv or a pipe delimited (delimiter is a parameter) file($Filename) whose Metadata in stored in ${Filename}_Meta...The idea is to generate useful insights on the file as much as possible and provide key summaries to the users.
+
+Python framework should use libraries like numpy, pandas, PyQt5, qtwidgets, keyboard, pillow, dot-env etc...I need the output UI to have the best award winning style sheets applied and layout with more modern looking sleek button, hyperlink, Python chart styles...
+
+The Metadata is stored as a pipe delimited PrimaryKey followed by the 5 value info-pair for every field values in the $Filename.
+FileKey-comma delimited Primary Key Columns
+FieldName-Name of the Column
+FieldType-Char/Num/Date/Datetime
+FieldLength-format text/float/decimal precision
+FieldDesc-Description of the Field
+FieldDType-Should be used as a Dimension(D) or a Measure(M)
+The Python code generates descriptive statistics on all the key fields
+
+Rules 
+-Provides a Python based UI to point to the location of the File, option to select the delimiter etc and hits Submit button to proceed to the next screen
+-On Submit, The framework should parallely analyze the file and create quick statistics such as Char Fields[Frequencies(N)], Num fields [Min,Max,Sum,Mean,Median] and Date Fields for [Min,Max]
+
+-Loads a Two Tab Python based UI Layout
+-Tab 1 - Visualize
+	-Reads the csv or a pipe delimited file and meta file and loads the Field Names into a Tableau Dashboard style Menu. Show the Quick Stats on Hovering the Field Names
+	-The user drags and Drops the Dimensions and Measure Fields to analyze the file...
+	-The user specifies which type of chart they want to see from a list of Visualizations like Line, Pie,Bar,Stacked Bar,Histogram and Scatter Plots.
+	-On Submit button click, the python code creates descriptive statistics on that file based on the fields selected with highest quality Charts, Plots and graphs.
+	
+-Tab 2 - Data Grid
+	-Two Panel Layout
+		Panel 1 - width 100%, Height 10%
+			-Reads the csv or a pipe delimited file and meta file and loads the Field Names into Live Search Box for all Fields. For Dimension type fields the search box filters by the text, For Measure type fields the search box uses expressions like between value1 and Value2
+		Panel 2 - width 100%, Height 90%
+			-Reads the csv or a pipe delimited file and meta file and loads the File into a table grid style Frame with filters from Panel 1 applied
+			-Grid should have inbuilt line numbers
+
+The framework should be designed that many users could run the code simultaneously and independently...so there should not be any file locking or overwriting each others files/outputs or customizations etc.
+
+The Python UI Framework designed should be able to executed on a Windows machine as well as on a Unix Server...Make sure the code can handle multiple environments.
+
+All environment-driven parameters should be defined in ../venv/.env file
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
+
+Parse the File and Metadata file with pipe delimiter and show me where it is failing...
+
+The onClick data shown should be in a tabular format and not JSON format...
+
+Always sort the data by the given Primary Key and show anywhere in the UI...
+
+UI should be light mode with Blue Pastel colors majorly...All text should be Black and visible....Table Grid should have alternate row highlighting and show 100 per page records by default...Any decimal values should be rounded to 4 decimals...numbers displayed should be 1000 comma-separated and right justified. Chars should be left justified...The on-hover mini table should have atleast 4px padding on all sides and have all numbers visible.
+
+For all numbers shown, apply thousands comma-separator and keep right justified
+
+on quick stats...Show the FieldDesc for that Field as well in the format FieldName [FieldDesc]...
+
+The Plot needs different color pallette, use pleasing visual colors...
+
+Add this Interactions, When the user clicks on a data point in the chart, the "Data Grid" should display the underlying data...
+
+In the Data Grid, Use Live Search Boxes with data assisted text boxes for the Dimension Filter, prepopulate the "Dimension Text filter" with sorted Unique values for that Dimension from the file
+
+upgrade the Measure filter to a live, data-assisted searchable dropdown and auto-load it with 10 value ranges (develop 10 equal ranges from Min to Max) from the selected measure column in the current file
+
+in the Data Grid, the Length of the Dimension and Measure Text Boxes should be the same...
+
+When a user uses the "Data Grid" Dimension and Measure Filter and clicls "Apply Filters", then remove any "Chart click filter applied" and serve the results.
+
+In the Dimensions and Measures just show the FieldName....But the quickstats should show the FieldName [FieldDesc] though.
+
+In the plot use Orange color pallette for the chart data visualizations...
+
+Show the vertical gridlines in the data grid...
+
+
+The Bar, Histogram Chart should use Orange Color palette...I would prefer to have multi colors for different Dimension values...
+
+Modifications for Data Grid
+-Split the Filter area into halves
+	Left - Dimension aread and Right is Measure area
+-Arrange Dimension Field and its Dimension text filter as pairs...Prepopulate the text box with as "Select values for the $Dimension".Use Small Text Box with small font. Text filter should be Windows style multi select 
+- Display atleast <=5 Dimension Field and its Dimension text filter...Add a "Add More Dimension Filters" to dynamically add more Dimension filters
+-Arrange Measures Field and its Measures Range filter as pairs...Prepopulate the text box with as "Select Range for the $Measure".Use Small Text Box with small font. Text filter should be Windows style multi select 
+-Display atleast <=5 Measures Field and its Measures Range filter...Add a "Add More Measure Filters" to dynamically add more Measure filters
+-Display a check box with text "Sort the Column Names" in the Data Grid...Expected behavior is to display all the data grid fields in sort order. if left unchecked...columns will be in the order of the data.
+
+-Display a hamburger icon on the far left- Clicking on it should display all the Column Names in sorted order available to Hide/Unhide. All Primary keys are selected by default 
+
+On clicking the "Add more Dimension Filters" button deleted the previous user selected fieldname and values for dimension..Same behavior with the "Add more Measure Filters"...the previous user selected fieldname and values for dimension should persist while the user adds more dimensions.
+
+Add a standard Search Box,Select All, Deselect All checkboxes on left drawer when hamburger icon is selected...
+
+Auto set the width of the columns and keep it as minimized as possible to avoid excessive scrolling...
+
+On clicking the "Add more Dimension Filters" button after a user selected and used the filter with some values, it deleted the previous user selections of fieldname and selected Filter values for dimension..Same behavior with the "Add more Measure Filters"...the previous user selected fieldname and the values for dimension should persist while the user adds more dimensions.
+
+All Numeric Type Measure FieldValues in the data grid should show 1000th comma separater...Do not apply the 1000th comma separator for Dimension Field Values
+
+If a user has selected a Dimension or a Measure in one of the drop down then remove that Dimension or Measure from the other Dimension/Measure drop down...basically make it cascading style...
+
+On clicking the "Export Filtered CSV" Button, the user should be able to download the file to their PC like windows style.
+
+use this file as example G:\My Drive\AI_Projects\AI_Fileanalyze\sample\NST-EST2025-ALLDATA.csv with pipe delimiter...
+
+
+I'm not seeing 1000s comma separator in data-grid-table and data-grid-bottom-pane...How to fix it?
+
+I want to be able to copy the data-grid-table contents with column names to clipboard to excel...how can I do that?
+
+use the default file as example and execute @run_file_analyzer.bat and go through each step to verify where the issue lies...
+
+Modifications to the Data Grid Tab
+Make the Dimension Filters panel to have two column layout with Dimension Filter selection and the Text Filter next to each other...
+
+Make the Measures Filters panel to have two column layout with Measure Filter selection and the Measure Range Filter next to each other...
+
+Make the application robust to handle large volumes of data...
+At what point do you think, the application may crash or hang? what would be the limits to stop using this application?
+
+auto-block rendering above threshold,
+show warning with row/column counts,
+force sampled preview + mandatory export for full data.
+
+create the quickstats using parallel processing multi threads for generating the onhover quick stats on loading the profile of the given file...
+
+Are these Insight and summary enhancements made...
+In addition to requested stats, include:
+Data quality scorecard: null %, invalid parse %, duplicate PK %, outlier hints
+Distribution hints: skewness warning for numeric measures
+Recommended charts based on selected field types (auto-suggest best visual)
+Metadata health warnings (missing descriptions, mismatched type declarations)
+“Top findings” card summarizing 3-5 key observations automatically...
+
+add the missing parts now:
+
+explicit null %, invalid parse %, duplicate PK % fields,
+numeric skewness/outlier hints,
+clearer percentage formatting in scorecard labels.
+
+Create a How to - Tutorial for using this application...Give a Summary of the purpose, features, Tabs, How to Generate Analysis, Filter data in the data grid etc. Replace the "Project Docs" Button with "Help" Button pointing to the Tutorial...
+
+On Data Grid Tab, Make the Column Names CAPITAL, BOLD and Pastel blue background
+On Data Grid Tab, Add quick Live Search Filters for every column above the column Name...Tightly integrate the length of the column and the length of the quick filter...So if the user adjusts the length of the column it should adjust the length of the quick filter box with that as well.
+
+
+On Data Grid Tab, The Quick Filters for Measure data type should be able accept ranges for e.g. 100 and 400 / 100-400 to filter the column values like column value between 100 and 400.
+
+On Visualize Tab...I would want the logic for Dimensions(Source) and Measures(Source) panels like this...The user should be able to multi-select the Dimension or Measures and then click the generate visualization to produce the plot...Show the multi-selection with a different background...I wanted to remove Selected Dimension(drop here) and Selected Measures(drop here) panels and release that space to the Plots...
+
+I picked Name as the Dimension and multi selected PopEstimate2024 and PopEstimate2025 for the measures...Only PopEstimate2024 values were plotted...what hapenned to PopEstimate2025...And also the chart data table showed Name and agg_value column...it should be PopEstimate2024 and PopEstimate2025...The Quick Search filter boxes should be modeled like the Data Grid Tab's Table Grid...i.e. tightly integrated lengths with columns, Capital, bold etc...
+
+On Visualize Tab, The Quick Filters for Measure data type in the Chart Table grid should be able accept ranges for e.g. 100 and 400 / 100-400 to filter the column values like column value between 100 and 400 just like the Data Grid Tab's Table Data Grid...
+
+On Visualize Tab...Clicking on the chart mark in the Chart area should filter the bottom Chart Table grid below by the Dimension value...for e.g. If I click on the bar for United States in the chart area should then filter the bottom Chart Table grid below with Dimension Name=United States.
+
+On Visualize Tab...Chart Table Grid...The user should be able to sort the data in the columns by clicking on the column name... show and persist the up and down arrows to show by which column the data is ordered...also should be able to sort by multiple columns by using ctrl key + column Selection...By default the data table grid should be ordered by the Primary Key columns...
+
+What does the Clear Chart Selection Button do?
+
+
+On all tabs, drop down with the down arrow
+
+Visualize
+------------
+pagination of chart table grid
+
+Data Grid
+-----------
+drop down with selecting measures.
+
+searchable drop down menu with multi-select checklist
+
+On Data grid Tab...I want the Dimension text filters (Labeled as as $DimensionName Filter) and Measure Range Filters  (Labeled as as $MeasureName Filter) to be  searchable drop down menus with multi-select checklist with Select All and Deselect All options...Add "Remove" button to remove the dimension/measure filters from their panels view.
+
+Add another text box with label # of decimals to capture the number of decimals needed in the menu...default it to 2...Put it next to Delim on the top row before Submit button...On submit use that value to round all the Measure type field values and any quick stats values on both the Visualize and Data Grid Tabs...
+
+Add a Zoom Slider to enhance or reduce all the text on the UI...Place it Windows 11 style like in MS Word / Excel Apps on the Bottom Far Right corner...
+
+On Data grid Tab...Use the space between the Prev and Next button...Show the Column Names and Filters Applied on the data...for e.g. if Name Dimension was filtered with Alabama and Texas then display the Text "Filters - Name in (Alabama,Texas)" to show which filters are applied...
+
+On Pivot Data Tab...Design Pivot Layout should have three column layout...Rows(dimensions), Columns(Optional - Dimensions) and Values (Measures)...Each of them should be multi-select...For e.g. if a user selects SUMLEV, DIVISION, NAME for Rows, REGION for Column, and POPESTIMATE2020 for Values it should give an output like the image attached...There should be Row Level and Column Level Totals...
+
+On Pivot Data Tab...if a user selects SUMLEV, DIVISION, NAME for Rows, REGION for Column, and POPESTIMATE2020 for Values...The output table has POPESTIMATE2020 columns names for Region..For example the Column Names should be Region-Value1,Region-Value2,Region-Value3,Region-Value4 etc and not POPESTIMATE2020[Value1], POPESTIMATE2020[Value2], POPESTIMATE2020[Value3],POPESTIMATE2020[Value4] etc.
+
+On Pivot data tab....Show the selected Rows, Columns, Values and Aggregation with the Text above the Pivot Table grid "Selected Rows: Columns: Values: Aggregation:"...like the "filters - " logic used above.
+
+Create another Tab "Summary"
+
+Summarize for each Field in the File and produce relevant reports to display.
+Data Type Inference: Sorting columns or data blocks into boolean, numeric, string, or datetime categories. Missing Value Mapping: Calculating the density, location, and percentage of empty data points.
+Descriptive Statistics: 
+	Computing min, max, mean, median, standard deviation, and variance for Measure type fields.
+	Computing frequency, and null counts for Dimension (Character) strings.
+Value Distribution: Generating histograms to identify skewness, cardinality, and unique value counts.
+Anomalous Data Detection: Isolating outliers that deviate drastically from the surrounding data baseline.Duplicate Tracking: Locating identical rows, blocks, or binary sequences within the file.
+
+on Summary Tab...make these modifications.
+- Field Names should be capital and Bold
+- Bin range... replace '-'  with ' - '
+- Bin range...Show full number...no exponential number i.e. E notation
+- If a Field is of type D (Dimension) infer it as string form and not numeric.
+- I see there is a outline box for each Field...make it a bit more darker 
+- Top Values(string form) for field type D..Show at least 50 unique values and wrap the others into "Others"..Add a Total row with totals matching the number of records.
+- - Top Values(string form) for field type M..Show at least 50 ranges and wrap the others into "Others"..Add a Total row with totals matching the number of records.
+
+on Summary Tab...make these modifications.
+- If the values of Nulls:, Empty/Blank Strings:, Missing Density: IQR Outliers is greater than 0 then Bold the number and yellow background.
+
+on Summary Tab...make these modifications.
+Replace Copy Summary(text) to "Copy to Clipboard"...Copy the entire content to Clip Board while maintaining high level of formatting.
+
+On the GUI, The top Row... Data: and Meta: labels are followed by much spaces and then Text boxes...Expand the respective Text Boxes to fill that gap so that there is not a lot of spacing visible...
+
+On the Top Row, remove the text box for the Meta:...Keep the "Browse Meta" Button to browse to a File though...
+Add button "Browse Templates"...Clicking the button should show the FileNames (No extension) from the templates/ directory in a searchable drop down menu...
+
+Modify the Load Data process like this...
+Ingest the user chosen excel .xlsx file using Browse meta Button or using Browse Templates control...generate a code that reads in that excel file that has these columns Field Name,Primary Key,FieldType,Datatype,Field Length,Field Description...Note that these columns can be in any order in the file...Make a comma delimited list of all Field Name's Where Primary Key is set to Y then use it as FileKey in the Project. Map The other column names to fields used in the project...
+
+On Pivot Data Tab...if a user selects SUMLEV, DIVISION, NAME for Rows, No column selected for Columns, and POPESTIMATE2020 for Values...The Pivot table generated has all zeroes...check the calculations once again.
+
+execute run_generate_pipe_data.bat --records 10000000 --output sample\LoanPop.txt

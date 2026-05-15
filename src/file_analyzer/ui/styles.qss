@@ -1,0 +1,92 @@
+/* Light-mode, blue pastel theme with black, high-contrast text.
+   Keep this file ASCII-only to avoid encoding surprises across platforms. */
+
+QWidget {
+    background: #F7FBFF;
+    color: #000000;
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+QLabel {
+    color: #000000;
+}
+
+QLineEdit, QComboBox, QTextEdit {
+    background: #FFFFFF;
+    border: 1px solid #BBD7F0;
+    border-radius: 4px;
+    padding: 4px 6px;
+    color: #000000;
+}
+
+QComboBox::drop-down {
+    border: none;
+    background: transparent;
+}
+
+QPushButton {
+    background-color: #D7ECFF;
+    border: 1px solid #86BDEB;
+    color: #000000;
+    border-radius: 7px;
+    padding: 6px 10px;
+    font-weight: 600;
+}
+
+QPushButton:hover {
+    background-color: #C3E2FF;
+}
+
+QPushButton:pressed {
+    background-color: #B3DBFF;
+}
+
+QPushButton:disabled {
+    background-color: #E7F1FB;
+    border-color: #C7D9EC;
+    color: #6B6B6B;
+}
+
+QTabWidget::pane {
+    border: 1px solid #BBD7F0;
+    border-radius: 8px;
+    top: -0.5em;
+}
+
+QTabBar::tab {
+    background: #D7ECFF;
+    color: #000000;
+    padding: 7px 11px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    border: 1px solid #86BDEB;
+    border-bottom: none;
+}
+
+QTabBar::tab:selected {
+    background: #BFE2FF;
+}
+
+QSplitter::handle {
+    background: #D7ECFF;
+}
+
+QSplitter::handle:horizontal {
+    width: 5px;
+}
+
+QSplitter::handle:vertical {
+    height: 5px;
+}
+
+QProgressBar {
+    border: 1px solid #BBD7F0;
+    border-radius: 4px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background: #86BDEB;
+    width: 10px;
+}
+
