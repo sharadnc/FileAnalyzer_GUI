@@ -52,6 +52,7 @@ from file_analyzer.meta_parser import (
 )
 from file_analyzer.pivot_hierarchy import build_pivot_leaf_sql, run_pivot_pipeline
 from file_analyzer.ui.models import LoadedDatasetContext
+from file_analyzer.ui.quick_stats_tooltips import quick_stats_tooltips_by_field_name
 
 try:
     from PyQt5.QtCore import QEvent, QObject, QPoint, QRect, Qt, QThread, QTimer, pyqtSignal
@@ -1042,6 +1043,31 @@ class DataGridTab(QWidget):
         wrap.setMinimumWidth(120)
         return wrap, lw
 
+    def _add_pivot_field_items(self, list_widget: QListWidget, field_names: Sequence[str]) -> None:
+        """Populate a pivot field list with quick-stats tooltips (same as Visualize tab).
+
+        Purpose
+        -------
+        Rows, Columns, and Values lists should show NULL counts and field stats on hover.
+
+        Internal Logic
+        ----------------
+        Build a name → HTML map from :func:`quick_stats_tooltips_by_field_name`, then add
+        one ``QListWidgetItem`` per field and attach the tooltip when present.
+
+        Example invocation
+        --------------------
+        ``self._add_pivot_field_items(self._pivot_rows_list, self._available_dimensions())``
+        """
+
+        tips = quick_stats_tooltips_by_field_name(self._ctx)
+        for name in field_names:
+            item = QListWidgetItem(name)
+            tip = tips.get(name)
+            if tip:
+                item.setToolTip(tip)
+            list_widget.addItem(item)
+
     def _build_pivot_field_bar(self) -> QWidget:
         """Lay out resizable Rows/Columns/Values lists and the control toolbar row.
 
@@ -1094,11 +1120,9 @@ class DataGridTab(QWidget):
             pass
         outer.addWidget(self._pivot_fields_splitter, 1)
 
-        for d in self._available_dimensions():
-            self._pivot_rows_list.addItem(QListWidgetItem(d))
-            self._pivot_cols_list.addItem(QListWidgetItem(d))
-        for m in self._available_measures():
-            self._pivot_vals_list.addItem(QListWidgetItem(m))
+        self._add_pivot_field_items(self._pivot_rows_list, self._available_dimensions())
+        self._add_pivot_field_items(self._pivot_cols_list, self._available_dimensions())
+        self._add_pivot_field_items(self._pivot_vals_list, self._available_measures())
 
         if self._pivot_rows_list.count() > 0:
             self._pivot_rows_list.item(0).setSelected(True)

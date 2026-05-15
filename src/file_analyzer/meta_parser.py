@@ -150,6 +150,35 @@ def field_displays_as_yyyymmdd(field: FieldMeta) -> bool:
     return is_yyyymmdd_field_type(field.field_type)
 
 
+def field_quick_stats_use_yyyymmdd_values(field: FieldMeta) -> bool:
+    """Return True when quick-stats value/count rows should use ``YYYYMMDD`` text.
+
+    Purpose
+    -------
+    Visualize and Pivot hover tooltips must show eight-digit dates for
+    ``FieldType`` ``YYYYMMDD`` and for storage types ``Date`` / ``Datetime`` /
+    ``Timestamp`` (and ``Time``), matching grid display rules.
+
+    Internal Logic
+    ----------------
+    1. ``YYYYMMDD`` role token → True.
+    2. Lowercased ``field_type`` in ``date``, ``datetime``, ``timestamp``, ``time`` → True.
+    3. Normalized alphanumeric token in ``DATE``, ``DATETIME``, ``TIMESTAMP``, ``TIME`` → True.
+
+    Example invocation
+    --------------------
+    ``field_quick_stats_use_yyyymmdd_values(due_dt_field)`` → True for ``FieldType`` ``Date``.
+    """
+
+    if is_yyyymmdd_field_type(field.field_type):
+        return True
+    t = field.field_type.lower().strip()
+    if t in ("date", "datetime", "timestamp", "time"):
+        return True
+    role = normalized_field_type(field.field_type)
+    return role in ("DATE", "DATETIME", "TIMESTAMP", "TIME")
+
+
 def format_yyyymmdd_display(value: object) -> str:
     """Format a date-like cell as ``YYYYMMDD`` (8 digits, no separators).
 

@@ -8,6 +8,7 @@ from file_analyzer.meta_parser import (
     FieldMeta,
     field_in_dimension_panels,
     field_in_measure_panels,
+    field_quick_stats_use_yyyymmdd_values,
     is_display_only_field,
     is_yyyymmdd_field_type,
 )
@@ -49,3 +50,10 @@ def test_yyyymmdd_spelling_variants() -> None:
     assert is_yyyymmdd_field_type("YYYYMMDD")
     assert is_yyyymmdd_field_type("yyyymmdd")
     assert not is_yyyymmdd_field_type("YYYYYMMDD")
+
+
+def test_field_quick_stats_use_yyyymmdd_for_date_storage_type() -> None:
+    """Purpose: ``FieldType`` ``Date`` enables YYYYMMDD quick-stats formatting."""
+
+    assert field_quick_stats_use_yyyymmdd_values(_field("Date", "D"))
+    assert field_quick_stats_use_yyyymmdd_values(_field("Datetime", "M"))

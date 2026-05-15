@@ -11,9 +11,10 @@ Internal Logic
 ---------------
 Given a dataset loaded into DuckDB, we compute field-wise aggregates:
 
-1. For ``Char``/dimension-like fields: top-N value frequencies.
-2. For ``Num``/measure fields: min, max, sum, mean, median.
-3. For ``Date``/``Datetime`` fields: min and max.
+1. For every eligible field: SQL ``NULL`` count (always shown in the UI, including ``0``).
+2. For ``Char``/dimension-like fields: top-N value frequencies.
+3. For ``Num``/measure fields: min, max, sum, mean, median.
+4. For ``Date``/``Datetime`` fields: min and max.
 
 Each field’s aggregates run in a worker thread: workers open their own DuckDB
 connections (session-safe because each session uses its own database file
@@ -30,7 +31,14 @@ from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from file_analyzer.meta_parser import FieldMeta, MetaDefinition, is_display_only_field, is_yyyymmdd_field_type
+from file_analyzer.meta_parser import (
+    FieldMeta,
+    MetaDefinition,
+    field_quick_stats_use_yyyymmdd_values,
+    format_yyyymmdd_display,
+    is_display_only_field,
+    normalized_field_type,
+)
 
 
 @dataclass(frozen=True)
@@ -50,6 +58,8 @@ class FieldQuickStats:
     ----------
     field:
         The field metadata object used to generate stats.
+    null_count:
+        Number of rows where the column value is SQL ``NULL`` (always computed).
     char_frequencies:
         Optional list of (value, count) tuples for Char fields.
     numeric_summary:
@@ -61,10 +71,27 @@ class FieldQuickStats:
     """
 
     field: FieldMeta
+    null_count: int = 0
     char_frequencies: Optional[List[Tuple[str, int]]] = None
     numeric_summary: Optional[Dict[str, float]] = None
     min_value: Optional[str] = None
     max_value: Optional[str] = None
+
+
+def _duck_quote_ident(ident: str) -> str:
+    """Return a double-quoted DuckDB identifier for a column or table name.
+
+    Purpose
+    -------
+    Match :func:`file_analyzer.summary_reports._duck_quote` so quick-stats SQL
+    resolves columns like ``LOAN_AMT`` reliably.
+
+    Example invocation
+    --------------------
+    ``_duck_quote_ident(\"LOAN_AMT\")`` → ``'\"LOAN_AMT\"'``.
+    """
+
+    return '"' + str(ident).replace('"', '""') + '"'
 
 
 def _format_nullable_datetime_value(value: Any) -> Optional[str]:
@@ -73,6 +100,65 @@ def _format_nullable_datetime_value(value: Any) -> Optional[str]:
     if value is None:
         return None
     return str(value)
+
+
+def _format_quick_stats_display_value(field: FieldMeta, value: Any) -> str:
+    """Format one quick-stats cell (frequency key or min/max) for tooltip display.
+
+    Purpose
+    -------
+    Date, Datetime, Timestamp, and ``YYYYMMDD`` fields show ``YYYYMMDD`` in quick
+    stats on Visualize and Pivot; other fields use ``str(value)``.
+
+    Example invocation
+    --------------------
+    ``_format_quick_stats_display_value(field, row_date)`` → ``\"20260131\"``.
+    """
+
+    if field_quick_stats_use_yyyymmdd_values(field):
+        formatted = format_yyyymmdd_display(value)
+        if formatted:
+            return formatted
+    return str(value)
+
+
+def _fetch_null_count(
+    database_path: str,
+    table_name: str,
+    field_name: str,
+    *,
+    conn: Any = None,
+) -> int:
+    """Count rows where the column is SQL ``NULL``.
+
+    Purpose
+    -------
+    Every quick-stats tooltip must show a ``NULL`` row (including ``0``).
+
+    Internal Logic
+    ---------------
+    Run ``COUNT(*) … WHERE col IS NULL`` with a quoted identifier. When *conn*
+    is supplied, reuse it (same worker thread); otherwise open a short-lived
+    connection.
+
+    Example invocation
+    --------------------
+    ``n = _fetch_null_count(db_path, \"data\", \"STATE\")``
+    """
+
+    import duckdb  # type: ignore
+
+    col = _duck_quote_ident(field_name)
+    sql = f"SELECT COUNT(*)::BIGINT FROM {table_name} WHERE {col} IS NULL"
+    own_conn = conn is None
+    if own_conn:
+        conn = duckdb.connect(database=database_path)
+    try:
+        row = conn.execute(sql).fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
+    finally:
+        if own_conn:
+            conn.close()
 
 
 def _compute_char_stats(
@@ -85,13 +171,15 @@ def _compute_char_stats(
 
     import duckdb  # type: ignore
 
-    col = field.name.replace('"', '""')
+    col = _duck_quote_ident(field.name)
     conn = duckdb.connect(database=database_path)
     try:
+        null_count = _fetch_null_count(database_path, table_name, field.name, conn=conn)
         rows = conn.execute(
             f"""
             SELECT {col} AS value, COUNT(*) AS cnt
             FROM {table_name}
+            WHERE {col} IS NOT NULL
             GROUP BY {col}
             ORDER BY cnt DESC
             LIMIT {int(top_n)}
@@ -102,9 +190,9 @@ def _compute_char_stats(
 
     freqs: List[Tuple[str, int]] = []
     for value, cnt in rows:
-        freqs.append((str(value), int(cnt)))
+        freqs.append((_format_quick_stats_display_value(field, value), int(cnt)))
 
-    return FieldQuickStats(field=field, char_frequencies=freqs)
+    return FieldQuickStats(field=field, null_count=null_count, char_frequencies=freqs)
 
 
 def _compute_num_stats(
@@ -116,12 +204,13 @@ def _compute_num_stats(
 
     import duckdb  # type: ignore
 
-    col = field.name.replace('"', '""')
+    col = _duck_quote_ident(field.name)
     conn = duckdb.connect(database=database_path)
     try:
         row = conn.execute(
             f"""
             SELECT
+              SUM(CASE WHEN {col} IS NULL THEN 1 ELSE 0 END)::BIGINT AS null_count,
               MIN({col}) AS min_value,
               MAX({col}) AS max_value,
               SUM({col}) AS sum_value,
@@ -133,7 +222,7 @@ def _compute_num_stats(
     finally:
         conn.close()
 
-    min_value, max_value, sum_value, mean_value, median_value = row
+    null_count, min_value, max_value, sum_value, mean_value, median_value = row
     numeric_summary: Dict[str, float] = {
         "min": float(min_value) if min_value is not None else float("nan"),
         "max": float(max_value) if max_value is not None else float("nan"),
@@ -142,7 +231,11 @@ def _compute_num_stats(
         "median": float(median_value) if median_value is not None else float("nan"),
     }
 
-    return FieldQuickStats(field=field, numeric_summary=numeric_summary)
+    return FieldQuickStats(
+        field=field,
+        null_count=int(null_count) if null_count is not None else 0,
+        numeric_summary=numeric_summary,
+    )
 
 
 def _compute_date_stats(
@@ -154,24 +247,105 @@ def _compute_date_stats(
 
     import duckdb  # type: ignore
 
-    col = field.name.replace('"', '""')
+    col = _duck_quote_ident(field.name)
     conn = duckdb.connect(database=database_path)
     try:
         row = conn.execute(
             f"""
-            SELECT MIN({col}) AS min_value, MAX({col}) AS max_value
+            SELECT
+              SUM(CASE WHEN {col} IS NULL THEN 1 ELSE 0 END)::BIGINT AS null_count,
+              MIN({col}) AS min_value,
+              MAX({col}) AS max_value
             FROM {table_name}
             """
         ).fetchone()
     finally:
         conn.close()
 
-    min_value, max_value = row
+    null_count, min_value, max_value = row
+    if field_quick_stats_use_yyyymmdd_values(field):
+        min_s = _format_quick_stats_display_value(field, min_value) if min_value is not None else None
+        max_s = _format_quick_stats_display_value(field, max_value) if max_value is not None else None
+    else:
+        min_s = _format_nullable_datetime_value(min_value)
+        max_s = _format_nullable_datetime_value(max_value)
     return FieldQuickStats(
         field=field,
-        min_value=_format_nullable_datetime_value(min_value),
-        max_value=_format_nullable_datetime_value(max_value),
+        null_count=int(null_count) if null_count is not None else 0,
+        min_value=min_s,
+        max_value=max_s,
     )
+
+
+def quick_stats_type_bucket(field: FieldMeta) -> Literal["char", "num", "date", "skip"]:
+    """Classify a field for parallel quick-stats computation.
+
+    Purpose
+    -------
+    Decide whether to compute top-value frequencies (``char``), numeric summaries
+    (``num``), or min/max (``date``). Excel templates such as ``LoanPop.xlsx`` use
+    ``FieldType`` ``D`` / ``M`` for dimension vs measure role; legacy ``*_Meta`` text
+    uses storage types like ``Char`` and ``Num``.
+
+    Internal Logic
+    ---------------
+    1. Skip ``DISPLAY`` fields (grid-only).
+    2. Treat ``YYYYMMDD`` and Date/Datetime/Timestamp types as categorical top-N
+       with ``YYYYMMDD`` display (see :func:`field_quick_stats_use_yyyymmdd_values`).
+    3. Map Excel role tokens ``D`` → ``char``, ``M`` → ``num``.
+    4. Match common storage-type synonyms (``VARCHAR``, ``INTEGER``, …).
+    5. Fall back to ``field_dtype`` (``D``/``M``) when ``FieldType`` is unknown.
+
+    Example invocation
+    --------------------
+    ``quick_stats_type_bucket(state_field)`` → ``\"char\"`` when ``FieldType`` is ``\"D\"``.
+    """
+
+    if is_display_only_field(field):
+        return "skip"
+    if field_quick_stats_use_yyyymmdd_values(field):
+        return "char"
+
+    role = normalized_field_type(field.field_type)
+    if role == "D":
+        return "char"
+    if role == "M":
+        return "num"
+
+    t = field.field_type.lower().strip()
+    if t in (
+        "char",
+        "varchar",
+        "nvarchar",
+        "text",
+        "string",
+        "str",
+        "character",
+        "alpha",
+    ):
+        return "char"
+    if t in (
+        "num",
+        "number",
+        "numeric",
+        "integer",
+        "int",
+        "float",
+        "double",
+        "decimal",
+        "real",
+        "bigint",
+        "smallint",
+        "long",
+        "money",
+        "currency",
+    ):
+        return "num"
+    if field.field_dtype == "D":
+        return "char"
+    if field.field_dtype == "M":
+        return "num"
+    return "skip"
 
 
 def compute_quick_stats_parallel(
@@ -247,49 +421,9 @@ def compute_quick_stats_parallel(
 
     log = logging.getLogger(__name__)
 
-    def type_bucket(field: FieldMeta) -> Literal["char", "num", "date", "skip"]:
-        """Bucket a field based on its FieldType (includes common Excel synonyms)."""
-
-        if is_display_only_field(field):
-            return "skip"
-        if is_yyyymmdd_field_type(field.field_type):
-            return "char"
-        t = field.field_type.lower().strip()
-        if t in (
-            "char",
-            "varchar",
-            "nvarchar",
-            "text",
-            "string",
-            "str",
-            "character",
-            "alpha",
-        ):
-            return "char"
-        if t in (
-            "num",
-            "number",
-            "numeric",
-            "integer",
-            "int",
-            "float",
-            "double",
-            "decimal",
-            "real",
-            "bigint",
-            "smallint",
-            "long",
-            "money",
-            "currency",
-        ):
-            return "num"
-        if t in ("date", "datetime", "timestamp", "time"):
-            return "date"
-        return "skip"
-
     task_count = 0
     for field in meta.fields:
-        if type_bucket(field) != "skip":
+        if quick_stats_type_bucket(field) != "skip":
             task_count += 1
 
     if task_count == 0:
@@ -297,7 +431,7 @@ def compute_quick_stats_parallel(
         return {}
 
     pool_cap = max(1, min(max(1, max_workers), task_count))
-    futures: list[Future[FieldQuickStats]] = []
+    future_to_field: Dict[Future[FieldQuickStats], str] = {}
     t0 = time.perf_counter()
     log.info(
         "Quick stats: running %s field task(s) with up to %s worker thread(s)",
@@ -308,21 +442,24 @@ def compute_quick_stats_parallel(
     results: Dict[str, FieldQuickStats] = {}
     with ThreadPoolExecutor(max_workers=pool_cap, thread_name_prefix="fa-qstats") as executor:
         for field in meta.fields:
-            bucket = type_bucket(field)
+            bucket = quick_stats_type_bucket(field)
             if bucket == "char":
-                futures.append(
-                    executor.submit(_compute_char_stats, database_path, table_name, field, top_n)
-                )
+                fut = executor.submit(_compute_char_stats, database_path, table_name, field, top_n)
             elif bucket == "num":
-                futures.append(executor.submit(_compute_num_stats, database_path, table_name, field))
+                fut = executor.submit(_compute_num_stats, database_path, table_name, field)
             elif bucket == "date":
-                futures.append(executor.submit(_compute_date_stats, database_path, table_name, field))
+                fut = executor.submit(_compute_date_stats, database_path, table_name, field)
             else:
                 continue
+            future_to_field[fut] = field.name
 
-        for fut in as_completed(futures):
-            stats = fut.result()
-            results[stats.field.name] = stats
+        for fut in as_completed(future_to_field):
+            field_name = future_to_field[fut]
+            try:
+                stats = fut.result()
+                results[stats.field.name] = stats
+            except Exception:
+                log.exception("Quick stats failed for field %s", field_name)
 
     elapsed = time.perf_counter() - t0
     log.info(

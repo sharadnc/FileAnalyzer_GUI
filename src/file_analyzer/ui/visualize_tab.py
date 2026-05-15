@@ -34,6 +34,13 @@ from file_analyzer.meta_parser import (
 from file_analyzer.stats_service import FieldQuickStats
 from file_analyzer.ui.grid_tab import _parse_measure_range_bounds
 from file_analyzer.ui.models import LoadedDatasetContext
+from file_analyzer.ui.quick_stats_tooltips import (
+    build_tooltip_html as _build_tooltip_html,
+    dim_meas_source_rows_for_context as _dim_meas_source_rows_for_context,
+    field_list_tooltip_html as _visualize_field_list_tooltip,
+    format_number_for_tooltip as _format_number,
+    quick_stats_null_count_row_html as _quick_stats_null_count_row_html,
+)
 
 try:
     from PyQt5.QtCore import QObject, Qt, QThread, QTimer, QUrl, pyqtSignal, pyqtSlot
@@ -631,166 +638,6 @@ def _configure_field_source_list(list_widget: QListWidget) -> None:
         pass
 
 
-def _format_number(value: float, decimal_places: int) -> str:
-    """Format a numeric value for UI display (tooltip).
-
-    Purpose
-    -------
-    Apply consistent rounding and thousands separators for measure statistics,
-    honoring the user's **# of decimals** from the load submit strip.
-
-    Parameters
-    ----------
-    value:
-        Numeric value to format.
-    decimal_places:
-        Number of digits after the decimal point (clamped to ``[0, 30]``).
-
-    Returns
-    -------
-    str
-        Formatted string with thousands separators and the requested precision.
-    """
-
-    if value != value:  # NaN check
-        return "—"
-    dp = max(0, min(30, int(decimal_places)))
-    return f"{value:,.{dp}f}"
-
-
-def _build_tooltip_html(stats: FieldQuickStats, decimal_places: int) -> str:
-    """Build the rich HTML tooltip shown on field hover.
-
-    This tooltip follows your rules:
-    - includes ``FieldName [FieldDesc]``,
-    - uses a mini-table with **4px padding** on cells,
-    - right-justifies numbers and shows comma separators,
-    - remains non-JSON (HTML only).
-    """
-
-    field = stats.field
-    header = f"<b>{escape(field.name)}</b> [<i>{escape(field.description)}</i>]"
-
-    if stats.char_frequencies is not None:
-        freq_rows = "".join(
-            f"<tr>"
-            f"<td style='text-align:left;padding:4px;'>{escape(str(value))}</td>"
-            f"<td style='text-align:right;padding:4px;'>{cnt:,}</td>"
-            f"</tr>"
-            for value, cnt in stats.char_frequencies[:10]
-        )
-        return (
-            f"<div style='padding:4px;'>{header}"
-            f"<table style='border-collapse:collapse;'>{freq_rows}</table>"
-            f"</div>"
-        )
-
-    if stats.numeric_summary is not None:
-        s = stats.numeric_summary
-        body = (
-            f"<tr><td style='text-align:left;padding:4px;'>Min</td>"
-            f"<td style='text-align:right;padding:4px;'>{_format_number(float(s['min']), decimal_places)}</td></tr>"
-            f"<tr><td style='text-align:left;padding:4px;'>Max</td>"
-            f"<td style='text-align:right;padding:4px;'>{_format_number(float(s['max']), decimal_places)}</td></tr>"
-            f"<tr><td style='text-align:left;padding:4px;'>Sum</td>"
-            f"<td style='text-align:right;padding:4px;'>{_format_number(float(s['sum']), decimal_places)}</td></tr>"
-            f"<tr><td style='text-align:left;padding:4px;'>Mean</td>"
-            f"<td style='text-align:right;padding:4px;'>{_format_number(float(s['mean']), decimal_places)}</td></tr>"
-            f"<tr><td style='text-align:left;padding:4px;'>Median</td>"
-            f"<td style='text-align:right;padding:4px;'>{_format_number(float(s['median']), decimal_places)}</td></tr>"
-        )
-        return (
-            f"<div style='padding:4px;'>{header}"
-            f"<table style='border-collapse:collapse;'>{body}</table>"
-            f"</div>"
-        )
-
-    if stats.min_value is not None or stats.max_value is not None:
-        minv = escape(str(stats.min_value)) if stats.min_value is not None else "—"
-        maxv = escape(str(stats.max_value)) if stats.max_value is not None else "—"
-        body = (
-            f"<tr><td style='text-align:left;padding:4px;'>Min</td>"
-            f"<td style='text-align:right;padding:4px;'>{minv}</td></tr>"
-            f"<tr><td style='text-align:left;padding:4px;'>Max</td>"
-            f"<td style='text-align:right;padding:4px;'>{maxv}</td></tr>"
-        )
-        return (
-            f"<div style='padding:4px;'>{header}"
-            f"<table style='border-collapse:collapse;'>{body}</table>"
-            f"</div>"
-        )
-
-    return f"<div style='padding:4px;'>{header}</div>"
-
-
-def _visualize_field_list_tooltip(
-    field: FieldMeta,
-    stats: Optional[FieldQuickStats],
-    decimal_places: int,
-) -> str:
-    """Build hover HTML for a row in the Dimensions / Measures source lists.
-
-    Purpose
-    -------
-    Dimension and measure names come from metadata; quick stats are optional.
-    When :func:`~file_analyzer.stats_service.compute_quick_stats_parallel` skips a
-    field (unsupported ``FieldType``), the lists must still show the field so the
-    user can chart it; this helper supplies a tooltip in both cases.
-
-    Internal Logic
-    ----------------
-    1. If ``stats`` is not ``None``, return :func:`_build_tooltip_html`.
-    2. Otherwise return a small HTML block with name, description, and a note that
-       quick stats were not computed for that field type.
-
-    Example invocation
-    --------------------
-    ``html = _visualize_field_list_tooltip(field, None, 2)``
-    """
-
-    if stats is not None:
-        return _build_tooltip_html(stats, decimal_places)
-    desc = (field.description or "").strip()
-    inner = escape(desc) if desc else "<i>(no description)</i>"
-    return (
-        f"<div style='padding:4px;'><b>{escape(field.name)}</b> [<i>{inner}</i>]<br/>"
-        "<small>Quick stats unavailable for this FieldType.</small></div>"
-    )
-
-
-def _dim_meas_source_rows_for_context(
-    ctx: LoadedDatasetContext,
-) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """Build (dimensions, measures) as ``(field_name, tooltip_html)`` pairs for source lists.
-
-    Purpose
-    -------
-    Keep list population logic testable without constructing Qt widgets (including
-    :class:`~PyQt5.QtWebEngineWidgets.QWebEngineView`, which may not initialize in
-    headless or minimal CI environments).
-
-    Internal Logic
-    ----------------
-    Walk ``ctx.meta.fields`` in order; for each field, resolve tooltip via
-    :func:`_visualize_field_list_tooltip`, then append to the dimension or measure
-    row list based on ``field.field_dtype``.
-
-    Example invocation
-    --------------------
-    ``dims, meas = _dim_meas_source_rows_for_context(ctx)``
-    ``assert dims[0][0] == "STATE"``
-    """
-
-    dims: list[tuple[str, str]] = []
-    meas: list[tuple[str, str]] = []
-    for field in ctx.meta.fields:
-        stats = ctx.quick_stats.get(field.name)
-        tip = _visualize_field_list_tooltip(field, stats, ctx.measure_decimal_places)
-        if field_in_dimension_panels(field):
-            dims.append((field.name, tip))
-        elif field_in_measure_panels(field):
-            meas.append((field.name, tip))
-    return dims, meas
 
 
 def _resolve_plotly_min_js_path() -> Path:
