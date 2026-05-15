@@ -76,7 +76,7 @@ python -m pytest
 
 ## Git-ready layout
 
-These files are set up for version control (no `git init` required until you are ready):
+These files are set up for version control:
 
 | File | Role |
 |------|------|
